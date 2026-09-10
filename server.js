@@ -24,7 +24,7 @@ const app = express();
 
 const API_SECRET = process.env.API_SECRET;
 const ENCRYPTION_SECRET = process.env.TOKEN_SECRET_KEY;
-const PORT = process.env.PORT || 3000; // Asignación dinámica provista por Railway
+const PORT = process.env.PORT || 3000; 
 
 const MATRIX_PE = process.env.MATRIX_PE_URL;
 const MATRIX_CL = process.env.MATRIX_CL_URL;
@@ -91,18 +91,27 @@ function verificarAutenticacion(req, res, next) {
     return res.status(401).json({ error: "No autorizado" });
 }
 
-// 5. Endpoints
+// 5. ENDPOINT: Guardar o limpiar Token (Perú o Chile)
 app.post('/save-token', verificarAutenticacion, (req, res) => {
     const { country, token } = req.body;
-    if (token && (country === 'PE' || country === 'CL')) {
-        tokens[country] = token.trim().replace(/^"|"$/g, '');
-        tokens[`${country}_updated_at`] = new Date().toISOString();
+    
+    if (country === 'PE' || country === 'CL') {
+        // Si el token viene vacío, nulo o indefinido, lo borramos
+        if (!token) {
+            tokens[country] = null;
+            tokens[`${country}_updated_at`] = new Date().toISOString();
+            console.log(`🗑️ Token de Matrix ${country} eliminado (Cierre de sesión detectado).`);
+        } else {
+            tokens[country] = token.trim().replace(/^"|"$/g, '');
+            tokens[`${country}_updated_at`] = new Date().toISOString();
+            console.log(`✅ Token de Matrix ${country} recibido y cifrado correctamente.`);
+        }
 
         fs.writeFileSync(TOKENS_FILE, encrypt(JSON.stringify(tokens)), 'utf-8');
-        console.log(`✅ Token de ${country} actualizado y cifrado en disco.`);
-        return res.json({ status: "success", country });
+        return res.json({ status: "success", country, active: !!tokens[country] });
     }
-    return res.status(400).json({ error: "Datos de token o país inválidos" });
+    
+    return res.status(400).json({ error: "País inválido" });
 });
 
 app.get('/get-token', verificarAutenticacion, (req, res) => {
