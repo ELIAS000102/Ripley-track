@@ -41,11 +41,9 @@ app.use(cors({
     },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
-    credentials: true
+    credentials: true,
+    optionsSuccessStatus: 200
 }));
-
-// Preflight OPTIONS adaptado a la sintaxis de rutas de Express 5
-app.options('/{*path}', cors());
 
 app.use(express.json());
 
@@ -114,22 +112,60 @@ app.post('/save-token', verificarAutenticacion, (req, res) => {
     return res.status(400).json({ error: "País inválido" });
 });
 
+// ENDPOINT: Obtener todos los tokens
 app.get('/get-token', verificarAutenticacion, (req, res) => {
-    return res.json({ status: "success", tokens });
+    if (!tokens.PE && !tokens.CL) {
+        return res.status(404).json({ 
+            status: "error", 
+            message: "Token no encontrado. Las sesiones de Perú y Chile están cerradas." 
+        });
+    }
+
+    return res.json({ 
+        status: "success", 
+        tokens: {
+            PE: tokens.PE || "Token no encontrado",
+            PE_updated_at: tokens.PE_updated_at || null,
+            CL: tokens.CL || "Token no encontrado",
+            CL_updated_at: tokens.CL_updated_at || null
+        } 
+    });
 });
 
+// ENDPOINT: Obtener token de Perú
 app.get('/get-token/pe', verificarAutenticacion, (req, res) => {
-    if (!tokens.PE) return res.status(404).json({ error: "Token PE no disponible" });
-    return res.json({ status: "success", country: "PE", id_token: tokens.PE, updated_at: tokens.PE_updated_at });
+    if (!tokens.PE) {
+        return res.status(404).json({ 
+            status: "error", 
+            message: "Token no encontrado para Perú" 
+        });
+    }
+    return res.json({ 
+        status: "success", 
+        country: "PE", 
+        id_token: tokens.PE, 
+        updated_at: tokens.PE_updated_at 
+    });
 });
 
+// ENDPOINT: Obtener token de Chile
 app.get('/get-token/cl', verificarAutenticacion, (req, res) => {
-    if (!tokens.CL) return res.status(404).json({ error: "Token CL no disponible" });
-    return res.json({ status: "success", country: "CL", id_token: tokens.CL, updated_at: tokens.CL_updated_at });
+    if (!tokens.CL) {
+        return res.status(404).json({ 
+            status: "error", 
+            message: "Token no encontrado para Chile" 
+        });
+    }
+    return res.json({ 
+        status: "success", 
+        country: "CL", 
+        id_token: tokens.CL, 
+        updated_at: tokens.CL_updated_at 
+    });
 });
 
-// 6. Inicio del Servidor
-app.listen(PORT, () => {
+// 6. Inicio del Servidor enlazado a 0.0.0.0
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor Multi-País activo en el puerto ${PORT}`);
     console.log(`🇵🇪 Origen PE: ${MATRIX_PE}`);
     console.log(`🇨🇱 Origen CL: ${MATRIX_CL}`);
