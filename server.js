@@ -1,19 +1,57 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const app = express();
-app.use(express.json());
+// Validación estricta de variables de entorno requeridas
+const requiredEnvVars = [
+    'API_SECRET',
+    'TOKEN_SECRET_KEY',
+    'MATRIX_PE_URL',
+    'MATRIX_CL_URL'
+];
 
-// CONFIGURACIÓN DE SEGURIDAD
+const missingEnvVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+    console.error(`❌ ERROR CRÍTICO: Faltan las siguientes variables de entorno: ${missingEnvVars.join(', ')}`);
+    process.exit(1);
+}
+
+const app = express();
+
 const API_SECRET = process.env.API_SECRET;
 const ENCRYPTION_SECRET = process.env.TOKEN_SECRET_KEY;
+const PORT = process.env.PORT || 3000; // Asignado dinámicamente por la plataforma de Hosting
+
+const MATRIX_PE = process.env.MATRIX_PE_URL;
+const MATRIX_CL = process.env.MATRIX_CL_URL;
+
+const allowedOrigins = [MATRIX_PE, MATRIX_CL];
+
+// Configuración estricta de CORS
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Bloqueado por política CORS'));
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
+    credentials: true
+}));
+
+app.options('*', cors());
+
+app.use(express.json());
+
 const ENCRYPTION_KEY = crypto.scryptSync(ENCRYPTION_SECRET, 'salt', 32);
 const TOKENS_FILE = path.join(__dirname, 'tokens.bin');
 
-// Funciones de cifrado AES-256-GCM
+// Funciones de Cifrado AES-256-GCM
 function encrypt(text) {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
@@ -36,85 +74,52 @@ function decrypt(data) {
     }
 }
 
-// Cargar estado guardado desde el archivo cifrado al arrancar
+// Cargar almacenamiento persistente
 let tokens = { PE: null, CL: null };
 if (fs.existsSync(TOKENS_FILE)) {
-    const rawData = fs.readFileSync(TOKENS_FILE, 'utf-8');
-    const decryptedData = decrypt(rawData);
-    if (decryptedData) {
-        tokens = JSON.parse(decryptedData);
-        console.log("🔒 [INICIO] Tokens cifrados cargados correctamente desde el disco.");
-    }
+    const decryptedData = decrypt(fs.readFileSync(TOKENS_FILE, 'utf-8'));
+    if (decryptedData) tokens = JSON.parse(decryptedData);
 }
 
-// Restricción de Origen (CORS controlado)
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (!origin || origin.includes('localhost') || origin.includes('ripleyprd.com')) {
-        res.header("Access-Control-Allow-Origin", origin || "*");
-        res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-        res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        if (req.method === 'OPTIONS') return res.sendStatus(200);
-        return next();
-    }
-    return res.status(403).json({ error: "Acceso bloqueado por política CORS" });
-});
-
-// Middleware de Autorización por Bearer Token
+// Middleware de autenticación Bearer Token
 function verificarAutenticacion(req, res, next) {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader === `Bearer ${API_SECRET}`) {
         return next();
     }
-    return res.status(401).json({ error: "No autorizado. Debes enviar Authorization: Bearer <API_SECRET>" });
+    return res.status(401).json({ error: "No autorizado" });
 }
 
-// ENDPOINT: Recibir y cifrar tokens desde la extensión
-app.post('/save-token', (req, res) => {
+// Endpoints
+app.post('/save-token', verificarAutenticacion, (req, res) => {
     const { country, token } = req.body;
     if (token && (country === 'PE' || country === 'CL')) {
-        const cleanToken = token.trim().replace(/^"|"$/g, '');
-        tokens[country] = cleanToken;
+        tokens[country] = token.trim().replace(/^"|"$/g, '');
         tokens[`${country}_updated_at`] = new Date().toISOString();
 
-        // Escribir archivo cifrado binario
-        const encryptedContent = encrypt(JSON.stringify(tokens));
-        fs.writeFileSync(TOKENS_FILE, encryptedContent, 'utf-8');
-
-        console.log(`✅ [${new Date().toLocaleTimeString()}] Token de Matrix ${country} CIFRADO y actualizado en disco.`);
-        return res.json({ status: "success", country: country });
+        fs.writeFileSync(TOKENS_FILE, encrypt(JSON.stringify(tokens)), 'utf-8');
+        console.log(`✅ Token de ${country} actualizado y cifrado correctamente.`);
+        return res.json({ status: "success", country });
     }
     return res.status(400).json({ error: "Datos de token o país inválidos" });
 });
 
-// ENDPOINTS PROTEGIDOS: Consultar tokens
 app.get('/get-token', verificarAutenticacion, (req, res) => {
-    return res.json({
-        status: "success",
-        tokens: {
-            pe: tokens.PE,
-            cl: tokens.CL,
-            updated_pe: tokens.PE_updated_at,
-            updated_cl: tokens.CL_updated_at
-        }
-    });
+    return res.json({ status: "success", tokens });
 });
 
 app.get('/get-token/pe', verificarAutenticacion, (req, res) => {
-    if (!tokens.PE) {
-        return res.status(404).json({ error: "Token de Perú no disponible. Abre Matrix Perú en el navegador." });
-    }
-    return res.json({ status: "success", country: "PE", id_token: tokens.PE, updated_at: tokens.PE_updated_at });
+    if (!tokens.PE) return res.status(404).json({ error: "Token PE no disponible" });
+    return res.json({ status: "success", country: "PE", id_token: tokens.PE });
 });
 
 app.get('/get-token/cl', verificarAutenticacion, (req, res) => {
-    if (!tokens.CL) {
-        return res.status(404).json({ error: "Token de Chile no disponible. Abre Matrix Chile en el navegador." });
-    }
-    return res.json({ status: "success", country: "CL", id_token: tokens.CL, updated_at: tokens.CL_updated_at });
+    if (!tokens.CL) return res.status(404).json({ error: "Token CL no disponible" });
+    return res.json({ status: "success", country: "CL", id_token: tokens.CL });
 });
 
-// Vinculación exclusiva a loopback local (127.0.0.1)
-app.listen(3000, '127.0.0.1', () => {
-    console.log("🔒 Servidor Seguro Multi-País activo exclusivamente en http://127.0.0.1:3000");
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor activo en puerto ${PORT}`);
+    console.log(`🇵🇪 Origen PE: ${MATRIX_PE}`);
+    console.log(`🇨🇱 Origen CL: ${MATRIX_CL}`);
 });
