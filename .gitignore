@@ -1,0 +1,42 @@
+# ==========================================
+# SECRETOS Y ARCHIVOS DE ENTORNO LOCAL
+# ==========================================
+.env
+.env.local
+.env.*.local
+view-tokens.js
+
+# ==========================================
+# ARCHIVOS DE TOKENS Y CONFIGURACIÓN PRIVADA
+# ==========================================
+tokens.bin
+tokens.json
+config.json
+
+# ==========================================
+# DEPENDENCIAS Y LIBRERÍAS DE NODE.JS
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ==========================================
+# DATOS DE SESIÓN Y AUTOMATIZACIÓN (PLAYWRIGHT)
+# ==========================================
+session_data/
+.playwright/
+test-results/
+
+# ==========================================
+# ARCHIVOS DEL SISTEMA OPERATIVO Y EDITORES
+# ==========================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
