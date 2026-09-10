@@ -1,9 +1,10 @@
 {
   "name": "ripley-token",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Servidor de sincronización y almacenamiento cifrado de tokens para Matrix PE/CL",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
